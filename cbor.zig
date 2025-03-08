@@ -138,16 +138,14 @@ fn serializeInteger(value: i64, writer: anytype) Error!void {
             try writeU16BigEndian(writer, @intCast(value));
         } else if (value <= std.math.maxInt(u32)) {
             try writer.writeByte(0x1A);
-            const bytes = std.mem.toBytes(@as(u32, @intCast(value)));
-            for (bytes) |byte| {
-                try writer.writeByte(byte);
-            }
+            // Преобразуем в big-endian и записываем
+            const be_value = std.mem.nativeToBig(u32, @intCast(value));
+            try writer.writeAll(std.mem.asBytes(&be_value));
         } else {
             try writer.writeByte(0x1B);
-            const bytes = std.mem.toBytes(@as(u64, @intCast(value)));
-            for (bytes) |byte| {
-                try writer.writeByte(byte);
-            }
+            // Преобразуем в big-endian и записываем
+            const be_value = std.mem.nativeToBig(u64, @intCast(value));
+            try writer.writeAll(std.mem.asBytes(&be_value));
         }
     } else {
         const abs = if (value == std.math.minInt(i64))
@@ -175,13 +173,90 @@ fn serializeInteger(value: i64, writer: anytype) Error!void {
         }
     }
 }
+fn doubleToHalf(value: f64) u16 {
+    // Получаем бинарное представление double
+    const bits = @as(u64, @bitCast(value));
+
+    // Извлекаем компоненты double-precision
+    const sign = @as(u16, @intCast((bits >> 63) & 1));
+    var exponent = @as(i16, @intCast((bits >> 52) & 0x7FF));
+    var fraction = bits & 0x000FFFFFFFFFFFFF;
+
+    // Специальные случаи
+    if (exponent == 0x7FF) {
+        // Infinity или NaN
+        if (fraction == 0) {
+            // Infinity
+            return (sign << 15) | 0x7C00;
+        } else {
+            // NaN
+            return (sign << 15) | 0x7E00;
+        }
+    }
+
+    // Убираем смещение double и добавляем смещение half
+    exponent -= 1023;
+
+    // Проверка на ноль или денормализованное число
+    if (exponent < -24) {
+        // Слишком маленькое число, возвращаем ±0
+        return sign << 15;
+    }
+
+    // Проверка на переполнение
+    if (exponent > 15) {
+        // Слишком большое число, возвращаем ±Infinity
+        return (sign << 15) | 0x7C00;
+    }
+
+    // Преобразуем нормализованное число
+    var half: u16 = 0;
+
+    if (exponent >= -14) {
+        // Нормализованное число для half-precision
+        half = @as(u16, @intCast((exponent + 15) << 10));
+    } else {
+        // Денормализованное число для half-precision
+        fraction |= 0x0010000000000000; // Добавляем неявный бит
+        const shift_amount = @as(u6, @intCast(-(exponent + 14 + 10)));
+        fraction >>= shift_amount;
+    }
+
+    // Берем 10 бит мантиссы
+    half |= @as(u16, @intCast((fraction >> 42) & 0x3FF));
+
+    // Добавляем знак
+    half |= (sign << 15);
+
+    return half;
+}
+
 fn serializeFloat(value: f64, writer: anytype) Error!void {
-    try writer.writeByte(0xFB);
+    // Решаем, какой формат использовать
 
-    const be_value = std.mem.nativeToBig(u64, @as(u64, @bitCast(value)));
-    const be_bytes = std.mem.asBytes(&be_value);
+    // Проверяем каждое условие отдельно
+    const is_zero = value == 0.0;
+    const is_neg_zero = value == -0.0;
+    const is_inf = std.math.isInf(value);
+    const is_nan = std.math.isNan(value);
+    const is_special = is_zero or is_neg_zero or is_inf or is_nan;
 
-    try writer.writeAll(be_bytes);
+    const abs_value = @abs(value);
+    const is_small_integer = abs_value <= 65504.0 and @trunc(value) == value;
+
+    const half = doubleToHalf(value);
+
+    if (is_special or is_small_integer) {
+        // Используем half-precision
+        try writer.writeByte(0xF9);
+        try writer.writeByte(@intCast((half >> 8) & 0xFF)); // Старший байт
+        try writer.writeByte(@intCast(half & 0xFF)); // Младший байт
+    } else {
+        // Используем double-precision
+        try writer.writeByte(0xFB);
+        const be_value = std.mem.nativeToBig(u64, @as(u64, @bitCast(value)));
+        try writer.writeAll(std.mem.asBytes(&be_value));
+    }
 }
 
 fn serializeString(value: []const u8, writer: anytype) Error!void {

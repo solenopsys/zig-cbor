@@ -1,0 +1,22 @@
+{
+    "name": "Benchmark Test",
+    "items": [
+      {"id": 1, "value": "first", "active": true, "score": 94.5},
+      {"id": 2, "value": "second", "active": false, "score": 82.1},
+      {"id": 3, "value": "third", "active": true, "score": 76.3}
+    ],
+    "metadata": {
+      "created": "2025-03-08T12:00:00Z",
+      "version": "1.0",
+      "tags": ["test", "benchmark", "zig"]
+    },
+    "config": {
+      "maxRetries": 5,
+      "timeout": 3000,
+      "features": {
+        "logging": true,
+        "caching": true,
+        "compression": false
+      }
+    }
+  }

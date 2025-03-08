@@ -83,6 +83,9 @@
       "roundtrip": true,
       "decoded": -18446744073709551617
     },
+
+
+
     {
       "cbor": "IA==",
       "hex": "20",
@@ -131,6 +134,8 @@
       "roundtrip": true,
       "decoded": 1.1
     },
+
+
     {
       "cbor": "+T4A",
       "hex": "f93e00",
@@ -379,6 +384,8 @@
   
       ]
     },
+
+    
     {
       "cbor": "gwECAw==",
       "hex": "83010203",
